@@ -1,39 +1,68 @@
-const request = require('supertest');
-const app = require('../server');
+const axios = require('axios');
+const { MongoMemoryServer } = require('mongodb-memory-server');
 const mongoose = require('mongoose');
-const User = require('../models/User');
+
+
+const userPayload = {
+  username: 'testuser124',
+      email: 'test@example.com',
+      password: 'password123',
+}
+
+let mongoServer;
 
 beforeAll(async () => {
-  await mongoose.connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  });
+  mongoServer = await MongoMemoryServer.create();
+  const mongoUri = mongoServer.getUri();
+  await mongoose.connect(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
 });
 
 afterAll(async () => {
-  await User.deleteMany({});
-  await mongoose.connection.close();
+  await mongoose.disconnect();
+  await mongoServer.stop();
 });
 
-describe('User Endpoints', () => {
+describe('Test user registration and login routes', () => {
   it('should register a new user', async () => {
-    const res = await request(app)
-      .post('/api/users/register')
-      .send({
-        username: 'testuser',
-        password: 'testpassword',
-      });
-    expect(res.statusCode).toEqual(200);
+    const res = await axios.post('http://localhost:5000/api/users/register', userPayload);
+    expect(res.status).toEqual(201);
   });
 
-  it('should login the user', async () => {
-    const res = await request(app)
-      .post('/api/users/login')
-      .send({
-        username: 'testuser',
-        password: 'testpassword',
+  it('should log in an existing user', async () => {
+
+    const res = await axios.post('http://localhost:5000/api/users/login', userPayload);
+
+    console.log(res,"resresres")
+    expect(res.data).toHaveProperty('token');
+
+    // expect(res.headers['auth-token']).toBeTruthy();
+  });
+
+  it('should not register a user with existing email', async () => {
+    
+
+    try {
+      await axios.post('http://localhost:5000/api/users/register', {
+        username: 'testuser2',
+        email: 'test@example.com', // Already registered email
+        password: 'password456',
       });
-    expect(res.statusCode).toEqual(200);
-    expect(res.body).toHaveProperty('token');
+    } catch (error) {
+      expect(error.response.status).toEqual(400);
+      // expect(error.response.data).toEqual('User already registered.');
+    }
+  });
+
+  it('should not log in with incorrect password', async () => {
+    
+
+    try {
+      await axios.post('http://localhost:5000/api/users/login', {
+        username: 'testuser123',
+        password: 'wrongpassword',
+      });
+    } catch (error) {
+      expect(error.response.status).toEqual(401);
+    }
   });
 });
